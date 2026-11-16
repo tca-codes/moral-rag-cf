@@ -41,6 +41,7 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "rot_agree": ("rot-agree", "rot_agree"),
     "severity": ("violation-severity", "violation_severity"),
     "chatbot": ("chatbot",),
+    "worker_answer": ("worker_answer",),
 }
 
 
@@ -57,10 +58,17 @@ class Example:
     rot_agree: Any
     severity: Any
     chatbot: str
+    worker_answer: str = ""  # human-written reply (MIC "worker_answer")
 
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text)).strip()
+
+
+def _clean_text(text: Any) -> str:
+    """normalize_text, but MIC's literal "nan" placeholder becomes an empty string."""
+    text = normalize_text(text)
+    return "" if text.lower() == "nan" else text
 
 
 def question_id(question: str) -> str:
@@ -140,6 +148,7 @@ def to_example(rec: dict, row: int) -> Example:
         rot_agree=_get(rec, "rot_agree"),
         severity=_get(rec, "severity"),
         chatbot=str(_get(rec, "chatbot", "")),
+        worker_answer=_clean_text(_get(rec, "worker_answer", "")),
     )
 
 

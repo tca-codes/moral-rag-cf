@@ -29,12 +29,17 @@ src/mvrag/
   agent_runner.py  resumable agent runs (JSONL, skips finished questions)
   socialchem.py    Social Chemistry 101 loading for the value judges
   judges.py        train/load/score the five value judges (reward models)
+  aggregator.py    the contextual aggregator (moderator) prompt and moral profile
+  jobs.py          resumable batched generation
 scripts/
   inspect_mic.py   print MIC's real schema (run first)
   run_agents.py    generate five agent answers for N questions
   eval_rouge.py    first sanity ROUGE numbers
   train_judges.py  train the five judges on Social Chemistry
   score_agents.py  5x5 table: each advisor scored by each judge
+  table1.py        plain model vs moral agents (paper's Table 1, small scale)
+  run_aggregator.py   run the prompt-only aggregator over a MIC split
+  eval_aggregator.py  ROUGE for plain / best agent / aggregator (paper's Figure 2)
 tests/             pytest, no GPU or network needed
 docs/DECISIONS.md  every deviation from the paper + open questions
 ```
@@ -76,10 +81,11 @@ pytest
 ## Roadmap
 
 - [x] Week 1: repo, MIC loader, prompt-based agents, resumable generation
-- [ ] Aggregator (prompt-only first, LoRA later) and baseline ROUGE
+- [x] Value judges (reward models) and Table 1 at small scale
+- [x] Prompt-only aggregator and ROUGE evaluation
+- [ ] LoRA-trained aggregator (the paper's CMVA-GS)
 - [ ] Retrieval: MiniLM embeddings + FAISS over the MIC train split
 - [ ] Counterfactuals: leave-one-out and swap tests on agent answers and passages
-- [ ] Value classifiers (stand-ins for the paper's reward models)
 - [ ] Report and results
 
 See `docs/DECISIONS.md` for how this differs from the paper.

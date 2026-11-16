@@ -119,3 +119,10 @@ def test_run_agents_with_custom_builders(tmp_path):
     lines = [json.loads(l) for l in out.read_text().splitlines()]
     assert [r["answers"] for r in lines] == [{"plain": "r"}, {"plain": "r"}]
     assert len(seen) == 2 and "conviction" not in seen[0][0]["content"]
+
+
+def test_run_agents_recovers_after_truncated_line(tmp_path):
+    out = tmp_path / "agents.jsonl"
+    out.write_text('{"uid": "a", "question": "q", "answers": {}}\n{"uid": "b", "ques')
+    run_agents([("a", "q"), ("b", "q2")], lambda chats: ["r"] * len(chats), out)
+    assert load_done(out) == {"a", "b"}

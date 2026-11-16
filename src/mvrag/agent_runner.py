@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from mvrag.agents import VALUES, build_agent_messages
+from mvrag.jobs import ensure_trailing_newline
 
 GenerateFn = Callable[[list[list[dict]]], list[str]]
 
@@ -56,6 +57,7 @@ def run_agents(
     todo = [(uid, q) for uid, q in questions if uid not in done]
 
     processed = 0
+    ensure_trailing_newline(out_path)
     with out_path.open("a", encoding="utf-8") as f:
         for start in range(0, len(todo), questions_per_chunk):
             chunk = todo[start : start + questions_per_chunk]

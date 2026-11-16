@@ -114,3 +114,34 @@ Mean P(follows value); rows = advisors, columns = judges.
 
 Own-judge mean 0.921 vs other-judge mean 0.910: the advisors are not
 differentiated by the judges. n=20 only, so treat as preliminary.
+
+## Model and hardware change (2026-11-16)
+
+- Generation model switched from Qwen2.5-1.5B-Instruct to **Qwen2.5-7B-Instruct**.
+  On the same 20 test questions, mean pairwise ROUGE-L between the five agents'
+  answers (lower = more distinct) was 0.388 (1.5B), 0.283 (3B), 0.246 (7B).
+- Runs moved to a Colab L4 GPU with the model in fp16 (`--no-4bit`), batch of 16
+  questions. Measured speed: 40 questions (200 agent answers) in 33 s, about 6x
+  the T4 with 4-bit. All "7B_full" outputs use this mode.
+- Earlier 1.5B results (Table 1 on 300 questions): plain -> agent was care
+  84.0 -> 87.8, fairness 88.8 -> 91.0, loyalty 91.0 -> 91.7, authority 83.1 -> 83.4,
+  sanctity 82.8 -> 85.4 (%). Own-judge mean 0.879 vs other-judge mean 0.873.
+
+## Aggregator (2026-11-16)
+
+- Input format is ours (the paper does not publish it): question, moral profile,
+  the five agent answers, optionally retrieved examples.
+- Moral profile: five 0/1 entries (care, fairness, loyalty, authority, sanctity)
+  from the row's `moral` labels. MIC's sixth foundation, liberty, is ignored as in
+  the paper. Rows with no label among the five have an all-zero profile and are
+  excluded from the ROUGE comparison (reported as "rows scored").
+- Prompt-only aggregator = analogue of the paper's "Agg13Llama" baseline (an LLM
+  asked to aggregate the agents' answers). The paper's CMVA-GS is the LoRA-trained
+  aggregator, still to do.
+- Identical (question, profile) inputs are generated once and reused for every
+  MIC row that shares them.
+- Reference answer: the paper does not say whether the ground truth is MIC's
+  `worker_answer` (human-written) or `A` (chatbot reply). Both are reported until
+  the professor confirms.
+- "best_agent" baseline (ours, not in the paper): the single agent whose value is
+  the first one set in the row's profile.
