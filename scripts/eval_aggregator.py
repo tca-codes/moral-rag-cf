@@ -42,11 +42,14 @@ def main() -> None:
     parser.add_argument("--split", default="test", choices=["train", "val", "test"])
     parser.add_argument("--data-dir", default="data/MIC")
     parser.add_argument("--out", default="outputs/rouge_aggregator_prompt.json")
+    parser.add_argument("--extra", nargs="*", default=[], metavar="NAME=FILE",
+                        help="more aggregator output files to score on the same rows, e.g. trained=outputs/aggregator_test_trained.jsonl")
     args = parser.parse_args()
 
     agg, agents, plain = read_outputs(args.aggregator), read_by_uid(args.agents), read_by_uid(args.plain)
     scorer = rouge_scorer.RougeScorer(list(METRICS), use_stemmer=True)
-    systems = ("plain", "best_agent", "aggregator")
+    extra = {name: read_outputs(path) for name, path in (item.split("=", 1) for item in args.extra)}
+    systems = ("plain", "best_agent", "aggregator", *extra)
     refs = {"worker_answer": "human-written reply (worker_answer)", "answer": "chatbot reply (A)"}
     sums = {r: {s: {m: 0.0 for m in METRICS} for s in systems} for r in refs}
     counts = {r: 0 for r in refs}
@@ -56,6 +59,8 @@ def main() -> None:
         key = profile_key(ex.uid, profile)
         if key not in agg or ex.uid not in agents or ex.uid not in plain:
             continue
+        if any(key not in outputs_ for outputs_ in extra.values()):
+            continue  # keep every system on exactly the same rows
         own = next((v for v, on in zip(PAPER_VALUES, profile) if on), None)
         if own is None:
             continue  # no profile among the five values (e.g. liberty-only rows)
@@ -63,6 +68,7 @@ def main() -> None:
             "plain": plain[ex.uid]["answers"]["plain"],
             "best_agent": agents[ex.uid]["answers"][own],
             "aggregator": agg[key]["output"],
+            **{name: outputs_[key]["output"] for name, outputs_ in extra.items()},
         }
         for ref_name in refs:
             reference = getattr(ex, ref_name)

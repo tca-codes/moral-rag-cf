@@ -8,7 +8,7 @@ from a real effect.
 from __future__ import annotations
 
 
-def load_model(model_name: str, four_bit: bool = True):
+def load_model(model_name: str, four_bit: bool = True, adapter: str | None = None):
     """Load a causal LM + tokenizer. Defaults suit a 16GB Colab T4 (fp16, 4-bit)."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -28,6 +28,10 @@ def load_model(model_name: str, four_bit: bool = True):
         kwargs["torch_dtype"] = torch.float16
 
     model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
+    if adapter:  # a trained LoRA adapter (e.g. the trained aggregator)
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, adapter)
     model.eval()
     return model, tokenizer
 

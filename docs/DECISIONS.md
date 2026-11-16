@@ -145,3 +145,69 @@ differentiated by the judges. n=20 only, so treat as preliminary.
   the professor confirms.
 - "best_agent" baseline (ours, not in the paper): the single agent whose value is
   the first one set in the row's profile.
+
+### 2026-11-16: Table 1 on the full test split (3,753 questions, Qwen2.5-7B, L4 fp16)
+
+P(answer follows the value) according to that value's judge.
+
+| value | plain model | moral agent | change | paper PT model | paper agent |
+|---|---|---|---|---|---|
+| care | 79.53% | 87.18% | +7.65 | 74.70% | 96.74% |
+| fairness | 85.71% | 89.18% | +3.48 | 85.20% | 92.40% |
+| loyalty | 88.40% | 93.50% | +5.10 | 74.38% | 98.20% |
+| authority | 78.72% | 86.64% | +7.93 | 91.58% | 98.83% |
+| sanctity | 77.59% | 80.36% | +2.77 | 78.37% | 93.05% |
+
+Agents' own-judge mean 0.874 vs other-judge mean 0.868: every agent beats the
+plain model on its own value, but the judges still do not separate the agents
+from each other. Paper used 5K MIC questions and PPO-tuned agents.
+
+### 2026-11-16: judges retrained on all available data (`judges/full`)
+
+distilroberta-base, 1 epoch, every distinct action per value, evaluated on the
+whole dev set.
+
+| judge | accuracy | macro-F1 | majority | n train | n dev |
+|---|---|---|---|---|---|
+| care | 0.915 | 0.904 | 0.655 | 81,117 | 11,092 |
+| fairness | 0.874 | 0.873 | 0.555 | 32,059 | 4,316 |
+| loyalty | 0.890 | 0.881 | 0.647 | 34,254 | 4,555 |
+| authority | 0.862 | 0.857 | 0.624 | 19,963 | 2,643 |
+| sanctity | 0.852 | 0.852 | 0.516 | 13,196 | 1,743 |
+
+Table 1 rescored with these judges (3,753 test questions, same answers):
+
+| value | plain model | moral agent | change |
+|---|---|---|---|
+| care | 92.64% | 97.20% | +4.56 |
+| fairness | 82.06% | 87.01% | +4.95 |
+| loyalty | 83.34% | 89.59% | +6.25 |
+| authority | 78.51% | 87.17% | +8.67 |
+| sanctity | 81.50% | 88.79% | +7.29 |
+
+Own-judge mean 0.900 vs other-judge mean 0.889. The absolute numbers move with
+the judge (care plain 79.5% -> 92.6% between judge versions, on identical text),
+so only comparisons made with the same judges are meaningful. `judges/full` is
+the set used from here on.
+
+### 2026-11-16: prompt-only aggregator, first 200 inputs (214 rows)
+
+ROUGE-L vs worker_answer: plain 0.132, best_agent 0.120, aggregator 0.123.
+ROUGE-L vs chatbot reply A: plain 0.171, best_agent 0.159, aggregator 0.162.
+Speed on L4 fp16: 200 inputs in 97 s. Qualitatively the prompt-only aggregator
+follows the profile but tends to copy one matching agent's answer verbatim
+rather than blend several (e.g. profile care+fairness+loyalty -> the loyalty
+answer unchanged).
+
+## Aggregator training settings (ours vs the paper)
+
+| | paper | ours |
+|---|---|---|
+| base model | Open Assistant 12B | Qwen2.5-7B-Instruct (4-bit while training) |
+| method | LoRA, supervised | LoRA, supervised (loss on the target reply only) |
+| LoRA rank | 128 | 64 (alpha 128, dropout 0.05, q/k/v/o projections) |
+| learning rate | 5e-7 | 1e-4, 3% warmup then linear decay |
+| batch | 256 (8 x A100-80GB) | 16 (8 x 2 accumulation, one L4) |
+| passes over the data | ~60 epochs (21.6K steps) | 1 epoch |
+| data | 91.0K MIC train samples | all MIC train rows with a target reply |
+| target | "ground-truth answer" (unspecified) | `worker_answer` by default; `--target answer` for the chatbot reply |

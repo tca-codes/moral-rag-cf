@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=60)
     parser.add_argument("--limit", type=int, default=None, help="only the first N distinct inputs (for a quick test)")
     parser.add_argument("--no-4bit", action="store_true", help="use fp16 instead of 4-bit")
+    parser.add_argument("--adapter", default=None, help="folder of a trained LoRA adapter (trained aggregator)")
     args = parser.parse_args()
 
     agents = {}
@@ -56,7 +57,7 @@ def main() -> None:
         jobs = jobs[: args.limit]
     print(f"{len(jobs)} distinct (question, profile) inputs; {skipped} rows skipped (no agent answers yet)")
 
-    model, tokenizer = load_model(args.model, four_bit=not args.no_4bit)
+    model, tokenizer = load_model(args.model, four_bit=not args.no_4bit, adapter=args.adapter)
     start = time.time()
 
     def gen(chats):

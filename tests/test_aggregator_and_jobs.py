@@ -55,3 +55,23 @@ def test_worker_answer_loaded_and_nan_cleaned(tmp_path):
     (root / "train.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
     ex = data.load_split("train", root)
     assert ex[0].worker_answer == "W1" and ex[1].worker_answer == ""
+
+
+def test_build_training_examples_filters_and_orders():
+    from mvrag.agg_train import build_training_examples, example_order, lr_at
+
+    def ex(uid, row, target, morals=("care",)):
+        return data.Example(uid=uid, row=row, question=f"q {uid}", answer="chat", rot="", morals=morals,
+                            moral_vector=None, a_agrees=None, rot_agree=None, severity=None, chatbot="",
+                            worker_answer=target)
+
+    rows = [ex("b", 1, "t-b"), ex("a", 0, "t-a", ("fairness",)), ex("a", 2, ""), ex("zz", 3, "no agents")]
+    agents = {u: {"uid": u, "answers": ANSWERS} for u in ("a", "b")}
+    out = build_training_examples(rows, agents)
+    assert [e["target"] for e in out] == ["t-a", "t-b"]  # sorted, empty target and unknown uid dropped
+    assert "fairness = 1" in out[0]["messages"][1]["content"]
+    assert [e["target"] for e in build_training_examples(rows, agents, "answer")] == ["chat", "chat", "chat"]
+
+    assert example_order(7, 2, 0) == example_order(7, 2, 0)
+    assert sorted(example_order(7, 2, 0)) == sorted(list(range(7)) * 2)
+    assert lr_at(0, 1000, 1.0) < lr_at(29, 1000, 1.0) == 1.0 and lr_at(999, 1000, 1.0) < 0.01
