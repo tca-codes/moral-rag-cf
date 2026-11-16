@@ -1,0 +1,116 @@
+# Decisions and deviations from the paper
+
+Paper: Dognin et al., "Contextual Moral Value Alignment Through Context-Based
+Aggregation" (arXiv 2403.12805). No code was found for it; this is a
+re-implementation from the paper's description, at reduced scale.
+
+## Deviations (copy into the report)
+
+| Paper | This project | Why |
+|---|---|---|
+| Open Assistant 12B base model | 1-3B instruct model (default Qwen2.5-1.5B-Instruct), 4-bit, fp16 | Colab T4 (16GB) |
+| 5 moral agents, each PPO-tuned (TRL) against a value reward model | Same model with 5 value-specific system prompts | RL fine-tuning needs far more compute |
+| Aggregator: LoRA SFT, 8x A100-80GB, 21.6K steps | Prompt-only first; small LoRA on a subset if time allows | Compute |
+| Full 91.0K/11.4K/11.4K samples | Subset of test questions (n=100 to ~1000) | Compute and time |
+| Reward models: one classifier per value | Small classifiers trained on MIC labels (planned) | Needed for value-alignment scores |
+| Llama-2 7B/13B and Agg13Llama baselines | Not replicated (or replaced by smaller prompted baselines) | Compute |
+
+## Things the paper does not specify (our choices)
+
+- Agent prompts. Descriptions in `agents.py` are our paraphrases of Moral
+  Foundations Theory.
+- Format of the aggregator input and how the "moral profile vector" is encoded
+  or derived from MIC. Placeholder idea: multi-hot over the five values from a
+  row's `morals`.
+- Train/val/test split procedure. Note that 91.0K + 11.4K + 11.4K is about
+  113.8K, close to MIC's ~114K annotation rows, which suggests the paper's
+  "samples" are annotation rows rather than unique prompt-reply pairs. Unconfirmed.
+- Which reply is the "ground truth" when a question has several. We currently
+  take the best ROUGE over all replies for a question.
+
+## Inconsistencies noticed in the paper
+
+- Text says classifiers are trained for four values (care, fairness, authority,
+  sanctity), then uses five (adds loyalty).
+- Eq. (1) writes argmin where the intent is clearly to maximize reward.
+- Figure 2 reports ROUGE only as a chart, so exact numbers cannot be matched,
+  only the ordering (CMVA-GS highest, Agg13Llama lowest).
+
+## Methodology rules
+
+- Greedy decoding everywhere, so counterfactual differences are not sampling noise.
+- Retrieval must exclude rows with the same question as the query, since MIC has
+  several rows per question and the split may not be by question (check this).
+- Select evaluation subsets by sorted question id (`unique_questions`) so they
+  are reproducible.
+
+## Open questions for the professor
+
+1. Is combining G11 and G15 allowed?
+2. Is any code, split file, or checkpoint available?
+3. Is a reduced-scale re-implementation acceptable for the replication grade?
+4. Does the paper's split correspond to MIC's official train/dev/test files?
+
+## Confirmed from real MIC data (2026-11-13, Colab)
+
+- Official MIC files have 91,014 / 11,427 / 11,376 rows (train/dev/test), matching
+  the paper's 91.0K/11.4K/11.4K. So the paper's "samples" are MIC annotation rows
+  and its split is MIC's official split.
+- Unique questions: 28,704 / 3,761 / 3,753.
+- Columns: A, A_agrees, Q, QA, chatbot, comments, moral, moral-vector, rot,
+  rot-agree, split, violation-severity, worker_answer.
+- `moral-vector` has 6 entries. One row (moral = loyalty -> index 3) is consistent
+  with the order [care, fairness, liberty, loyalty, authority, sanctity]. Verify on
+  more rows before relying on it.
+- Some rows have no moral label (NaN). Missing text is sometimes the string "nan".
+- `worker_answer` is a human-written reply. Open question: is the paper's
+  "ground-truth answer" the chatbot reply `A` or `worker_answer`?
+- Foundation counts in train: care 46,729; fairness 18,948; liberty 17,499;
+  loyalty 17,296; authority 16,171; sanctity 10,140.
+
+## Value judges / reward models (2026-11-13)
+
+- Paper: one classifier per moral value, built from SocialChem action judgments
+  binarized to 0 (negative) vs 1 (neutral/positive); P(class 1) is the reward.
+- Ours: same data and labeling. `distilroberta-base`, 1 epoch, up to 20K distinct
+  actions per value (seeded subsample), max length 64. The paper does not name its
+  classifier architecture or training settings, so these are our choices.
+- Repeated annotations of the same action are averaged before binarizing.
+- Rows flagged `rot-bad` are dropped.
+- Known limitation (inherited from the paper's design): each judge is trained on
+  good-vs-bad actions *within* one value, so it measures "is this morally
+  acceptable" on that value's kind of situation. It is not trained to tell values
+  apart. Judges are also trained on short action phrases but applied to full
+  replies (domain shift).
+- Agent prompts v2 (first person, 1-2 sentences, no AI disclaimers) raised mean
+  ROUGE-L from ~0.12 to ~0.15 on 20 test questions, but the five agents still give
+  near-identical answers. Motivates trained agents.
+
+## Results log
+
+### 2026-11-13: judges trained (Colab T4, distilroberta-base, 1 epoch)
+
+SocialChem has 355,922 rows (train 233,501 / dev 29,234 / test 29,239).
+
+| judge | dev accuracy | macro-F1 | majority baseline | n dev |
+|---|---|---|---|---|
+| care | 0.901 | 0.890 | 0.676 | 2000 |
+| fairness | 0.866 | 0.864 | 0.545 | 2000 |
+| loyalty | 0.884 | 0.869 | 0.643 | 2000 |
+| authority | 0.859 | 0.853 | 0.637 | 2000 |
+| sanctity | 0.851 | 0.851 | 0.516 | 1743 |
+
+### 2026-11-13: prompted advisors (v2) scored by judges, 20 test questions
+
+Mean P(follows value); rows = advisors, columns = judges.
+
+| advisor | care | fairness | loyalty | authority | sanctity |
+|---|---|---|---|---|---|
+| care | 0.934 | 0.952 | 0.971 | 0.909 | 0.906 |
+| fairness | 0.920 | 0.941 | 0.951 | 0.897 | 0.908 |
+| loyalty | 0.857 | 0.914 | 0.946 | 0.846 | 0.876 |
+| authority | 0.913 | 0.924 | 0.939 | 0.869 | 0.890 |
+| sanctity | 0.905 | 0.946 | 0.961 | 0.815 | 0.916 |
+
+Own-judge mean 0.921 vs other-judge mean 0.910: the advisors are not
+differentiated by the judges. n=20 only, so treat as preliminary.

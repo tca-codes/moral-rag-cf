@@ -1,0 +1,10 @@
+# Colab already ships torch; do not reinstall it there.
+transformers>=4.44
+accelerate
+bitsandbytes
+peft
+sentence-transformers
+faiss-cpu
+huggingface_hub
+rouge-score
+pytest
