@@ -54,3 +54,41 @@ def generate_batch(model, tokenizer, messages_list: list[list[dict]], max_new_to
         )
     new_tokens = out[:, enc["input_ids"].shape[1] :]
     return [t.strip() for t in tokenizer.batch_decode(new_tokens, skip_special_tokens=True)]
+
+
+def sample_batch(model, tokenizer, messages_list: list[list[dict]], n: int, max_new_tokens: int = 60,
+                 temperature: float = 1.0, top_p: float = 0.95) -> list[list[str]]:
+    """Sample `n` different replies per chat (used to get candidates for reward training)."""
+    import torch
+
+    prompts = [
+        tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+        for m in messages_list
+    ]
+    enc = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+    with torch.no_grad():
+        out = model.generate(
+            **enc,
+            max_new_tokens=max_new_tokens,
+            do_sample=True,
+            temperature=temperature,
+            top_p=top_p,
+            num_return_sequences=n,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+    new_tokens = out[:, enc["input_ids"].shape[1] :]
+    texts = [t.strip() for t in tokenizer.batch_decode(new_tokens, skip_special_tokens=True)]
+    return [texts[i * n : (i + 1) * n] for i in range(len(messages_list))]
+
+
+def load_model_with_adapters(model_name: str, adapters: dict[str, str], four_bit: bool = True):
+    """Base model with several named LoRA adapters; switch with model.set_adapter(name)."""
+    from peft import PeftModel
+
+    model, tokenizer = load_model(model_name, four_bit=four_bit)
+    names = list(adapters)
+    model = PeftModel.from_pretrained(model, adapters[names[0]], adapter_name=names[0])
+    for name in names[1:]:
+        model.load_adapter(adapters[name], adapter_name=name)
+    model.eval()
+    return model, tokenizer

@@ -32,6 +32,7 @@ src/mvrag/
   aggregator.py    the contextual aggregator (moderator) prompt and moral profile
   jobs.py          resumable batched generation
   agg_train.py     LoRA training of the aggregator (the paper's CMVA-GS)
+  reward.py        reward-based training data for the moral agents (best-of-N by judge)
 scripts/
   inspect_mic.py   print MIC's real schema (run first)
   run_agents.py    generate five agent answers for N questions
@@ -40,6 +41,8 @@ scripts/
   score_agents.py  5x5 table: each advisor scored by each judge
   table1.py        plain model vs moral agents (paper's Table 1, small scale)
   run_aggregator.py   run the prompt-only aggregator over a MIC split
+  sample_candidates.py reward training 1: sample answers, score with judges
+  train_agents.py      reward training 2: one LoRA adapter per value
   train_aggregator.py train the aggregator with LoRA (resumable)
   eval_aggregator.py  ROUGE for plain / best agent / aggregator (paper's Figure 2)
 tests/             pytest, no GPU or network needed

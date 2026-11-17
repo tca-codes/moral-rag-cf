@@ -74,3 +74,42 @@ def run_agents(
             if progress:
                 progress(processed, len(todo))
     return processed
+
+
+def run_agents_per_value(
+    questions: list[tuple[str, str]],
+    generate_for_value: Callable[[str, list[list[dict]]], list[str]],
+    out_path: str | Path,
+    questions_per_chunk: int = 64,
+    progress: Callable[[int, int], None] | None = None,
+) -> int:
+    """Like run_agents, but each value is generated separately.
+
+    Used for the reward-trained agents, where each value has its own adapter:
+    `generate_for_value(value, chats)` switches to that value's adapter and
+    returns one reply per chat. Output format is identical to run_agents.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    done = load_done(out_path)
+    todo = [(uid, q) for uid, q in questions if uid not in done]
+
+    processed = 0
+    ensure_trailing_newline(out_path)
+    with out_path.open("a", encoding="utf-8") as f:
+        for start in range(0, len(todo), questions_per_chunk):
+            chunk = todo[start : start + questions_per_chunk]
+            answers = {}
+            for value in VALUES:
+                replies = generate_for_value(value, [build_agent_messages(value, q) for _, q in chunk])
+                if len(replies) != len(chunk):
+                    raise RuntimeError(f"expected {len(chunk)} replies for {value}, got {len(replies)}")
+                answers[value] = replies
+            for i, (uid, q) in enumerate(chunk):
+                record = {"uid": uid, "question": q, "answers": {v: answers[v][i] for v in VALUES}}
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+            processed += len(chunk)
+            if progress:
+                progress(processed, len(todo))
+    return processed

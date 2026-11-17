@@ -211,3 +211,27 @@ answer unchanged).
 | passes over the data | ~60 epochs (21.6K steps) | 1 epoch |
 | data | 91.0K MIC train samples | all MIC train rows with a target reply |
 | target | "ground-truth answer" (unspecified) | `worker_answer` by default; `--target answer` for the chatbot reply |
+
+## Reward-trained moral agents (decided 2026-11-16)
+
+Project deadline: 2026-12-03. Decision: train the agents with a reward signal,
+as in the paper, instead of only prompting them.
+
+| | paper | ours |
+|---|---|---|
+| reward | P(answer follows value) from that value's classifier | same, using `judges/full` |
+| algorithm | PPO (TRL), batch 256 episodes, 4 epochs per batch, lr 2e-9 | best-of-N selection + supervised LoRA fine-tuning |
+| start policy | the pre-trained model | the same model with the value-specific prompt (kept at inference) |
+| regularization | KL penalty towards the initial policy | targets are the start policy's own samples |
+| data | MIC training questions | first 4,000 MIC training questions (by question id), 4 samples each, temperature 1.0, top-p 0.95 |
+| output | 5 fine-tuned LLMs | 5 LoRA adapters (rank 16, 2 epochs, lr 1e-4) on one base model |
+
+Why not PPO: unstable and slow for a 7B model on one GPU, and the PPO trainer the
+paper used is no longer part of current TRL releases (to be verified if cited).
+Why keep the value prompt: without it the five agents would differ only through
+five highly correlated judges, and the prompted agents were already barely
+distinct (own-judge 0.900 vs other-judge 0.889).
+Why 4,000 questions: 4,000 x 5 values x 4 samples = 80K generations (~4 h on an
+L4); all 28,704 questions would be ~26 h.
+Greedy decoding is still used for every evaluated answer; sampling is only used
+to create training candidates.
