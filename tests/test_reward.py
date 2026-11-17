@@ -52,3 +52,10 @@ def test_run_agents_per_value_format_and_resume(tmp_path):
     assert [r["uid"] for r in recs] == ["a", "b", "c"]
     assert recs[1]["answers"] == {v: f"{v}:q2" for v in VALUES}
     assert seen[:5] == [(v, 1) for v in VALUES] and seen[5:] == [(v, 2) for v in VALUES]
+
+
+def test_select_first_questions_matches_sampling_order():
+    from mvrag.reward import select_first_questions
+
+    sel = [{"uid": u} for u in ["c", "a", "d", "b"]]
+    assert [s["uid"] for s in select_first_questions(sel, 2)] == ["a", "b"]

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from mvrag.aggregator import profile_from_morals, profile_key
@@ -25,6 +26,12 @@ from mvrag.data import PAPER_VALUES, load_split
 from mvrag.jobs import read_outputs
 
 METRICS = ("rouge1", "rouge2", "rougeL", "rougeLsum")
+LABEL_PREFIX = re.compile(r"^\s*(?:A|Answer|Reply|Final reply)\s*:\s*", re.IGNORECASE)
+
+
+def clean_output(text: str) -> str:
+    """Drop a leading answer label copied from the prompt (e.g. "A: ..."); applied to every system."""
+    return LABEL_PREFIX.sub("", text or "", count=1).strip()
 
 
 def read_by_uid(path: str) -> dict[str, dict]:
@@ -76,7 +83,7 @@ def main() -> None:
                 continue
             counts[ref_name] += 1
             for system, text in outputs.items():
-                scores = scorer.score(reference, text)
+                scores = scorer.score(reference, clean_output(text))
                 for m in METRICS:
                     sums[ref_name][system][m] += scores[m].fmeasure
 

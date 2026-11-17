@@ -281,3 +281,73 @@ comparable with the new ones.
 - Reward training uses 8 candidates per question on the first 8,000 MIC training
   questions (by question id), sampled in two passes (4,000 then +4,000) so that
   every value has a complete 4,000-question set even if the run is stopped early.
+
+## 2026-11-17: prompted baselines (paper's Figure 2 systems), preliminary scoring
+
+Llama baselines: 5 MIC test examples per desired moral (worker_answer replies,
+never from the question being answered), fp16 on an A100 40GB. 7,796 distinct
+(question, profile) inputs each. Run times: Llama-2-7B 29 min, Llama-2-13B
+1 h 51 min (batch 4), Llama-3.1-8B 24 min.
+
+ROUGE on the same 9,652 test rows (rows whose profile has at least one of the
+five values). Reference = worker_answer (human-written):
+
+| system | ROUGE-1 | ROUGE-2 | ROUGE-L | ROUGE-Lsum |
+|---|---|---|---|---|
+| plain (Qwen 7B, no value instruction; paper's PT-model) | 0.1540 | 0.0239 | 0.1231 | 0.1231 |
+| best_agent (instructed Qwen advisor for the row's first value) | 0.1536 | 0.0255 | 0.1203 | 0.1203 |
+| aggregator (Qwen 7B, prompt-only, untrained) | 0.1571 | 0.0268 | 0.1246 | 0.1246 |
+| Llama-2-7b-chat, few-shot (paper baseline) | 0.1409 | 0.0219 | 0.1107 | 0.1130 |
+| Llama-2-13b-chat, few-shot (paper baseline) | 0.1590 | 0.0312 | 0.1253 | 0.1268 |
+| Llama-3.1-8B-Instruct, few-shot (ours, modern) | 0.1942 | 0.0446 | 0.1652 | 0.1652 |
+
+Reference = A (chatbot reply): ROUGE-L plain 0.1557, best_agent 0.1459,
+aggregator 0.1490, Llama-2-7B 0.1453, Llama-2-13B 0.1658, Llama-3.1-8B 0.2026.
+
+Observations:
+- Llama-2-7B often refuses ("I'm just an AI, I don't have personal experiences
+  ... so I cannot provide a reply"), which lowers its ROUGE. Llama-2-13B
+  sometimes prefixes its reply with "A:" (copied from the prompt format).
+- Paper's ordering partly reproduced: PT-model and Llama-13b are similar
+  (0.1231 vs 0.1253 ROUGE-L). The paper's Agg13Llama is not run yet (needs the
+  reward-trained agents' answers).
+- Llama-3.1-8B few-shot is clearly the strongest so far (+0.04 ROUGE-L). Note
+  that the few-shot baselines see example MIC replies in their prompt, while the
+  plain model and the Qwen aggregator do not, so they get a style hint the
+  others lack. This is the bar the trained aggregator has to beat.
+- Agent/plain/aggregator answers here are from the instructed (not yet
+  reward-trained) agents.
+
+## Extension design: RAG (G11) + counterfactual explanations (G15) (code 2026-11-17)
+
+RAG:
+- Pool: MIC training split only, one entry per question, its human-written
+  replies (worker_answer). Retrieval by cosine similarity of question texts
+  (all-MiniLM-L6-v2 sentence embeddings), k = 3, at most one reply per retrieved
+  question.
+- Profile-aware: among a retrieved question's replies, prefer one whose MIC
+  moral labels overlap the input's profile.
+- Leakage: the input's own question is never retrieved (matters for training
+  inputs, which come from the same split as the pool).
+- Experiment: train the aggregator twice with identical settings, without and
+  with retrieved examples in the prompt (CMVA-GS vs CMVA-GS + RAG), and compare
+  ROUGE and judge alignment on the test set.
+
+Counterfactuals (on a seeded sample of 500 test inputs, greedy decoding):
+- Variants per input: full; drop each of the five agent answers; drop each
+  retrieved example; drop all retrieved examples; swap each retrieved example
+  for one retrieved for a different input.
+- Measures vs the full reply: changed (text differs), influence
+  (1 - ROUGE-L between the two replies), quality delta (ROUGE-L vs worker_answer),
+  alignment delta (judge probability for the profile's values), flip (a judge's
+  yes/no decision for a profile value changes).
+- Key analyses: (1) are agents whose value is in the profile more influential
+  than the others (a profile-faithful aggregator should say yes); (2) does
+  influence fall with retrieval rank; (3) swap vs drop: does the aggregator read
+  the retrieved content or only use its presence; (4) qualitative examples with
+  the largest changes and flips.
+
+Also added 2026-11-17: `train_agents.py --limit-questions` (data-size curve),
+scoring now strips a leading "A:"/"Answer:"/"Reply:" label from every system's
+output before ROUGE (Llama-2-13B copies "A:" from the prompt), and the harmless
+Llama max_length warning is filtered.

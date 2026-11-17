@@ -16,6 +16,7 @@ import json
 
 from mvrag.agg_train import build_training_examples, load_for_training, train
 from mvrag.data import load_split
+from mvrag.jobs import read_outputs
 
 
 def main() -> None:
@@ -38,6 +39,8 @@ def main() -> None:
     parser.add_argument("--limit-examples", type=int, default=None)
     parser.add_argument("--no-4bit", action="store_true", help="train on the uncompressed model (needs more memory)")
     parser.add_argument("--grad-checkpointing", action="store_true", help="slower, but uses less GPU memory")
+    parser.add_argument("--retrieved", default=None,
+                        help="retrieved examples for the training split (RAG variant); omit for plain CMVA-GS")
     args = parser.parse_args()
 
     agents = {}
@@ -47,7 +50,8 @@ def main() -> None:
                 rec = json.loads(line)
                 agents[rec["uid"]] = rec
     rows = load_split(args.split, args.data_dir)
-    examples = build_training_examples(rows, agents, args.target)
+    retrieved = read_outputs(args.retrieved) if args.retrieved else None
+    examples = build_training_examples(rows, agents, args.target, retrieved)
     if args.limit_examples:
         examples = examples[: args.limit_examples]
     print(f"{len(rows)} MIC rows in split={args.split}; {len(examples)} usable training examples "

@@ -17,7 +17,7 @@ import time
 from mvrag.aggregator import build_aggregator_messages, profile_from_morals, profile_key
 from mvrag.data import load_split
 from mvrag.generate import generate_batch, load_model
-from mvrag.jobs import run_jobs
+from mvrag.jobs import read_outputs, run_jobs
 
 
 def main() -> None:
@@ -32,6 +32,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None, help="only the first N distinct inputs (for a quick test)")
     parser.add_argument("--no-4bit", action="store_true", help="use fp16 instead of 4-bit")
     parser.add_argument("--adapter", default=None, help="folder of a trained LoRA adapter (trained aggregator)")
+    parser.add_argument("--retrieved", default=None,
+                        help="retrieved examples from build_retrieval.py (RAG); omit for the plain aggregator")
     args = parser.parse_args()
 
     agents = {}
@@ -41,6 +43,7 @@ def main() -> None:
                 rec = json.loads(line)
                 agents[rec["uid"]] = rec
 
+    retrieved = read_outputs(args.retrieved) if args.retrieved else None
     jobs, seen, skipped = [], set(), 0
     for ex in sorted(load_split(args.split, args.data_dir), key=lambda e: (e.uid, e.row)):
         if ex.uid not in agents:
@@ -51,7 +54,10 @@ def main() -> None:
         if key in seen:
             continue
         seen.add(key)
-        messages = build_aggregator_messages(ex.question, agents[ex.uid]["answers"], profile)
+        context = retrieved[key]["retrieved"] if retrieved and key in retrieved else None
+        if retrieved is not None and context is None:
+            raise SystemExit(f"No retrieved examples for {key}; run build_retrieval.py for this split")
+        messages = build_aggregator_messages(ex.question, agents[ex.uid]["answers"], profile, context)
         jobs.append((key, messages, {"uid": ex.uid, "profile": list(profile)}))
     if args.limit:
         jobs = jobs[: args.limit]

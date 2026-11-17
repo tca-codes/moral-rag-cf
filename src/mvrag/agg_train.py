@@ -19,19 +19,30 @@ import random
 import time
 from pathlib import Path
 
-from mvrag.aggregator import build_aggregator_messages, profile_from_morals
+from mvrag.aggregator import build_aggregator_messages, profile_from_morals, profile_key
 
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj"]
 
 
-def build_training_examples(examples, agents: dict, target_field: str = "worker_answer") -> list[dict]:
-    """One training sample per MIC row that has agent answers and a target reply."""
+def build_training_examples(examples, agents: dict, target_field: str = "worker_answer",
+                            retrieved: dict | None = None) -> list[dict]:
+    """One training sample per MIC row that has agent answers and a target reply.
+
+    retrieved: optional {profile_key: {"retrieved": [...]}} for the RAG variant.
+    """
     out = []
     for ex in sorted(examples, key=lambda e: (e.uid, e.row)):
         target = getattr(ex, target_field)
         if ex.uid not in agents or not target:
             continue
-        messages = build_aggregator_messages(ex.question, agents[ex.uid]["answers"], profile_from_morals(ex.morals))
+        profile = profile_from_morals(ex.morals)
+        context = None
+        if retrieved is not None:
+            rec = retrieved.get(profile_key(ex.uid, profile))
+            if rec is None:
+                raise ValueError(f"no retrieved examples for {ex.uid}; run build_retrieval.py for this split")
+            context = rec["retrieved"]
+        messages = build_aggregator_messages(ex.question, agents[ex.uid]["answers"], profile, context)
         out.append({"messages": messages, "target": target})
     return out
 

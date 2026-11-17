@@ -7,6 +7,19 @@ from a real effect.
 
 from __future__ import annotations
 
+import logging
+
+
+class _DropLengthWarning(logging.Filter):
+    """Llama ships max_length=4096 in its generation config; we always pass
+    max_new_tokens, which takes precedence, so this warning is noise."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "seem to have been set" not in record.getMessage()
+
+
+logging.getLogger("transformers.generation.utils").addFilter(_DropLengthWarning())
+
 
 def load_model(model_name: str, four_bit: bool = True, adapter: str | None = None):
     """Load a causal LM + tokenizer. Defaults suit a 16GB Colab T4 (fp16, 4-bit)."""

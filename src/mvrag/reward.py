@@ -104,3 +104,8 @@ def reward_summary(selections: list[dict]) -> dict:
         "mean_candidate_reward": sum(s["mean_score"] for s in selections) / n,
         "mean_best_reward": sum(s["best_score"] for s in selections) / n,
     }
+
+
+def select_first_questions(selections: list[dict], n: int) -> list[dict]:
+    """The first n questions in sampling order (sampling takes questions sorted by uid)."""
+    return sorted(selections, key=lambda s: s["uid"])[:n]

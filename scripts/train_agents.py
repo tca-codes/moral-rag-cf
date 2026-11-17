@@ -16,7 +16,7 @@ from pathlib import Path
 
 from mvrag.agents import VALUES
 from mvrag.agg_train import load_for_training, read_state, train
-from mvrag.reward import build_agent_training_examples, load_selections
+from mvrag.reward import build_agent_training_examples, load_selections, select_first_questions
 
 
 def main() -> None:
@@ -35,6 +35,8 @@ def main() -> None:
     parser.add_argument("--max-len", type=int, default=320)
     parser.add_argument("--save-every", type=int, default=200)
     parser.add_argument("--max-steps", type=int, default=None, help="stop each value after this many steps (trial)")
+    parser.add_argument("--limit-questions", type=int, default=None,
+                        help="train on the first N questions only (same order as sampling), for the data-size comparison")
     parser.add_argument("--no-4bit", action="store_true", help="train on the uncompressed model")
     parser.add_argument("--grad-checkpointing", action="store_true",
                         help="slower, but uses much less GPU memory (needed for the uncompressed 7B model on an L4)")
@@ -47,6 +49,8 @@ def main() -> None:
             print(f"[{value}] already trained ({state['step']} steps), skipping")
             continue
         selections = load_selections(Path(args.reward_dir) / f"{value}.jsonl")
+        if args.limit_questions:
+            selections = select_first_questions(selections, args.limit_questions)
         examples = build_agent_training_examples(selections, value)
         if not examples:
             raise SystemExit(f"[{value}] no candidates found in {args.reward_dir}; run sample_candidates.py first")

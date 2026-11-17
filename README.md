@@ -34,6 +34,8 @@ src/mvrag/
   agg_train.py     LoRA training of the aggregator (the paper's CMVA-GS)
   reward.py        reward-based training data for the moral agents (best-of-N by judge)
   baselines.py     prompts for the paper's few-shot baselines
+  retrieval.py     RAG: retrieve similar MIC training examples (extension, G11)
+  counterfactual.py  input variants for counterfactual explanations (extension, G15)
 scripts/
   inspect_mic.py   print MIC's real schema (run first)
   run_agents.py    generate five agent answers for N questions
@@ -41,6 +43,9 @@ scripts/
   train_judges.py  train the five judges on Social Chemistry
   pick_judges.py   combine the most accurate judge per value into one set
   run_baseline.py  the paper's prompted Llama-2 baselines (few-shot and Agg13Llama)
+  build_retrieval.py       retrieve examples for every aggregator input (RAG)
+  run_counterfactuals.py   regenerate replies with one input removed or swapped
+  analyze_counterfactuals.py  which inputs drive the reply; tables and examples
   score_agents.py  5x5 table: each advisor scored by each judge
   table1.py        plain model vs moral agents (paper's Table 1, small scale)
   run_aggregator.py   run the prompt-only aggregator over a MIC split
@@ -92,8 +97,9 @@ pytest
 - [x] Value judges (reward models) and Table 1 at small scale
 - [x] Prompt-only aggregator and ROUGE evaluation
 - [ ] LoRA-trained aggregator (the paper's CMVA-GS)
-- [ ] Retrieval: MiniLM embeddings + FAISS over the MIC train split
-- [ ] Counterfactuals: leave-one-out and swap tests on agent answers and passages
+- [x] Retrieval code (RAG): MiniLM embeddings over the MIC train split
+- [x] Counterfactual code: leave-one-out and swap tests on agents and retrieved examples
+- [ ] Run RAG + counterfactual experiments
 - [ ] Report and results
 
 See `docs/DECISIONS.md` for how this differs from the paper.
