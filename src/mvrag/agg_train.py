@@ -108,9 +108,18 @@ def load_for_training(model_name: str, out_dir: str | Path, four_bit: bool = Tru
         kwargs["torch_dtype"] = dtype
     model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
     if four_bit:
-        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=grad_checkpointing)
+        model = prepare_model_for_kbit_training(
+            model, use_gradient_checkpointing=grad_checkpointing,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+        )
     elif grad_checkpointing:
-        model.gradient_checkpointing_enable()
+        # Recompute activations in the backward pass to save memory. The base
+        # weights are frozen, so the inputs must require grad for checkpointing
+        # to pass gradients through to the LoRA layers.
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        model.enable_input_require_grads()
+    if grad_checkpointing:
+        model.config.use_cache = False
 
     out_dir = Path(out_dir)
     if (out_dir / "adapter_config.json").exists():

@@ -36,6 +36,8 @@ def main() -> None:
     parser.add_argument("--save-every", type=int, default=200)
     parser.add_argument("--max-steps", type=int, default=None, help="stop each value after this many steps (trial)")
     parser.add_argument("--no-4bit", action="store_true", help="train on the uncompressed model")
+    parser.add_argument("--grad-checkpointing", action="store_true",
+                        help="slower, but uses much less GPU memory (needed for the uncompressed 7B model on an L4)")
     args = parser.parse_args()
 
     for value in args.values:
@@ -49,7 +51,8 @@ def main() -> None:
         if not examples:
             raise SystemExit(f"[{value}] no candidates found in {args.reward_dir}; run sample_candidates.py first")
         print(f"\n[{value}] training on {len(examples)} winning answers")
-        model, tokenizer = load_for_training(args.model, out_dir, four_bit=not args.no_4bit, rank=args.rank)
+        model, tokenizer = load_for_training(args.model, out_dir, four_bit=not args.no_4bit, rank=args.rank,
+                                             grad_checkpointing=args.grad_checkpointing)
         state = train(model, tokenizer, examples, out_dir, epochs=args.epochs, batch_size=args.batch_size,
                       grad_accum=args.grad_accum, lr=args.lr, max_len=args.max_len,
                       save_every=args.save_every, max_steps=args.max_steps)
