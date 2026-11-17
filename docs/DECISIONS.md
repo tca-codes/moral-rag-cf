@@ -226,8 +226,18 @@ as in the paper, instead of only prompting them.
 | data | MIC training questions | first 4,000 MIC training questions (by question id), 4 samples each, temperature 1.0, top-p 0.95 |
 | output | 5 fine-tuned LLMs | 5 LoRA adapters (rank 16, 2 epochs, lr 1e-4) on one base model |
 
-Why not PPO: unstable and slow for a 7B model on one GPU, and the PPO trainer the
-paper used is no longer part of current TRL releases (to be verified if cited).
+Why not PPO: unstable and slow for a 7B model on one GPU. The paper cites TRL's PPO
+implementation; TRL 0.12 removed that original PPO trainer and renamed a different
+one (PPOv2) to PPO, which needs a policy, a reference policy, a value model and a
+reward model that shares the policy's tokenizer, i.e. several copies of the LLM
+in memory. Our judges are separate DistilRoBERTa classifiers.
+
+Budget note (2026-11-16): compute units are no longer a constraint; the limits
+are the 2026-12-03 deadline and GPU availability on Colab (A100 often unavailable).
+Open question for the professor: which exact Open Assistant 12B checkpoint is the
+paper's PT model? `OpenAssistant/oasst-sft-4-pythia-12b-epoch-3.5` is public, but
+its model card describes supervised fine-tuning only, while the paper says the PT
+model was also tuned with RL on human preferences.
 Why keep the value prompt: without it the five agents would differ only through
 five highly correlated judges, and the prompted agents were already barely
 distinct (own-judge 0.900 vs other-judge 0.889).
@@ -235,3 +245,39 @@ Why 4,000 questions: 4,000 x 5 values x 4 samples = 80K generations (~4 h on an
 L4); all 28,704 questions would be ~26 h.
 Greedy decoding is still used for every evaluated answer; sampling is only used
 to create training candidates.
+
+## 2026-11-17: final judges = RoBERTa-large (`judges/best`)
+
+Trained on an A100 with every available SocialChem example per value, 1 epoch.
+First pass (lr 2e-5, no warmup): fairness collapsed to the majority class
+(0.555 = majority baseline); the other four improved. Fairness was retrained
+with lr 1e-5 and 6% linear warmup + linear decay. `scripts/pick_judges.py` then
+took the more accurate judge per value; all five picks are RoBERTa-large.
+
+| judge | DistilRoBERTa (`judges/full`) | RoBERTa-large (`judges/best`) |
+|---|---|---|
+| care | 0.915 | 0.941 |
+| fairness | 0.874 | 0.913 (derived from the reported mean; confirm in judges/best/metrics.json) |
+| loyalty | 0.890 | 0.911 |
+| authority | 0.862 | 0.877 |
+| sanctity | 0.852 | 0.888 |
+| mean | 0.879 | 0.906 |
+
+Caveat: these are SocialChem dev accuracies, also used to pick between the two
+sets, so they are slightly optimistic. The SocialChem test split is untouched and
+can be used to report final judge accuracy.
+
+`judges/best` is used for reward training and for every Table 1 from here on.
+All earlier Table 1 numbers (DistilRoBERTa judges) are superseded and are not
+comparable with the new ones.
+
+## 2026-11-17: hardware and reward-training scale
+
+- Colab Pro+, NVIDIA A100-SXM4-40GB. Agent LoRA training runs without gradient
+  checkpointing on the A100 (0.95 s/step at 16 examples/step, peak 27.1 GB);
+  on the L4 it needs gradient checkpointing (3.0 s/step, peak 16 GB).
+- Colab's preinstalled torchao 0.10 breaks PEFT; every session runs
+  `pip uninstall -y torchao` first.
+- Reward training uses 8 candidates per question on the first 8,000 MIC training
+  questions (by question id), sampled in two passes (4,000 then +4,000) so that
+  every value has a complete 4,000-question set even if the run is stopped early.

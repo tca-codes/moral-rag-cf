@@ -88,9 +88,10 @@ def main() -> None:
             continue
         results[ref_name] = {"n": n, **{s: {m: sums[ref_name][s][m] / n for m in METRICS} for s in systems}}
         print(f"\nReference: {label}   rows scored: {n}")
-        print(f"{'system':<12}" + "".join(f"{m:>11}" for m in METRICS))
+        width = max(12, *(len(s) + 2 for s in systems))
+        print(f"{'system':<{width}}" + "".join(f"{m:>11}" for m in METRICS))
         for s in systems:
-            print(f"{s:<12}" + "".join(f"{results[ref_name][s][m]:>11.4f}" for m in METRICS))
+            print(f"{s:<{width}}" + "".join(f"{results[ref_name][s][m]:>11.4f}" for m in METRICS))
 
     if not results:
         raise SystemExit("Nothing scored; check the input files.")
