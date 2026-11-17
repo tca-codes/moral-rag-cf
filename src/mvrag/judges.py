@@ -62,8 +62,14 @@ def train_judge(
     max_len: int = 64,
     seed: int = 0,
     log_every: int = 100,
+    warmup_frac: float = 0.0,
 ) -> dict:
-    """Fine-tune `base_model` as a binary classifier; save it and return dev metrics."""
+    """Fine-tune `base_model` as a binary classifier; save it and return dev metrics.
+
+    warmup_frac > 0 uses a linear warmup over that fraction of the steps, then
+    linear decay to zero (the standard RoBERTa fine-tuning schedule). Large
+    models can collapse to predicting one class without it.
+    """
     import random
 
     import torch
@@ -79,6 +85,7 @@ def train_judge(
 
     rng = random.Random(seed)
     step = 0
+    total_steps = epochs * ((len(train) + batch_size - 1) // batch_size)
     for _ in range(epochs):
         order = list(train)
         rng.shuffle(order)
@@ -88,6 +95,11 @@ def train_judge(
             labels = torch.tensor([y for _, y in chunk], device=device)
             enc = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=max_len)
             enc = {k: v.to(device) for k, v in enc.items()}
+            if warmup_frac > 0:
+                from mvrag.agg_train import lr_at
+
+                for group in optimizer.param_groups:
+                    group["lr"] = lr_at(step, total_steps, lr, warmup_frac)
             with torch.autocast(device_type=device, enabled=use_amp):
                 loss = model(**enc, labels=labels).loss
             optimizer.zero_grad()
@@ -100,7 +112,8 @@ def train_judge(
 
     probs = predict_probs(model, tokenizer, [t for t, _ in dev], max_len=max_len)
     metrics = binary_metrics([y for _, y in dev], [1 if p >= 0.5 else 0 for p in probs])
-    metrics.update({"base_model": base_model, "n_train": len(train), "epochs": epochs})
+    metrics.update({"base_model": base_model, "n_train": len(train), "epochs": epochs,
+                    "lr": lr, "warmup_frac": warmup_frac})
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

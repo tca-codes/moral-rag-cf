@@ -28,6 +28,10 @@ def main() -> None:
     parser.add_argument("--max-train", type=int, default=20000)
     parser.add_argument("--max-dev", type=int, default=2000)
     parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--warmup", type=float, default=0.0,
+                        help="fraction of steps for linear warmup, then linear decay (e.g. 0.06 for roberta-large)")
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--force", action="store_true", help="retrain judges that already exist")
     args = parser.parse_args()
 
@@ -37,6 +41,9 @@ def main() -> None:
     print("  split counts:", dict(Counter(r.get("split") for r in rows)))
 
     all_metrics = {}
+    summary_file = Path(args.judges_dir) / "metrics.json"
+    if summary_file.exists():
+        all_metrics.update(json.loads(summary_file.read_text()))
     for value in args.values:
         out_dir = Path(args.judges_dir) / value
         metrics_file = out_dir / "metrics.json"
@@ -50,10 +57,12 @@ def main() -> None:
             raise SystemExit(f"[{value}] no examples found; check the SocialChem columns")
         pos = sum(y for _, y in train) / len(train)
         print(f"[{value}] train={len(train)} dev={len(dev)}  share labeled good={pos:.2f}")
-        all_metrics[value] = train_judge(train, dev, out_dir, args.base_model, args.epochs)
+        all_metrics[value] = train_judge(train, dev, out_dir, args.base_model, args.epochs,
+                                         lr=args.lr, seed=args.seed, warmup_frac=args.warmup)
 
     print(f"\n{'judge':<10}{'accuracy':>10}{'macro_f1':>10}{'majority':>10}{'n_dev':>8}")
-    for value, m in all_metrics.items():
+    for value in [v for v in PAPER_VALUES if v in all_metrics]:
+        m = all_metrics[value]
         print(f"{value:<10}{m['accuracy']:>10.3f}{m['macro_f1']:>10.3f}{m['majority_baseline']:>10.3f}{m['n']:>8}")
     print("\n('majority' = accuracy of always guessing the most common label; a useful judge beats it.)")
     Path(args.judges_dir).mkdir(parents=True, exist_ok=True)

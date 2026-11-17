@@ -38,6 +38,7 @@ scripts/
   run_agents.py    generate five agent answers for N questions
   eval_rouge.py    first sanity ROUGE numbers
   train_judges.py  train the five judges on Social Chemistry
+  pick_judges.py   combine the most accurate judge per value into one set
   score_agents.py  5x5 table: each advisor scored by each judge
   table1.py        plain model vs moral agents (paper's Table 1, small scale)
   run_aggregator.py   run the prompt-only aggregator over a MIC split
