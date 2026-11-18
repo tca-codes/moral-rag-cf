@@ -43,6 +43,8 @@ scripts/
   train_judges.py  train the five judges on Social Chemistry
   pick_judges.py   combine the most accurate judge per value into one set
   hub.py           save/restore results via a private Hugging Face repository (verified uploads)
+  check_judges.py  measure each judge's real accuracy (catches swapped/broken weights)
+  rescore_candidates.py  re-score saved reward candidates with the final judges
   run_baseline.py  the paper's prompted Llama-2 baselines (few-shot and Agg13Llama)
   build_retrieval.py       retrieve examples for every aggregator input (RAG)
   run_counterfactuals.py   regenerate replies with one input removed or swapped

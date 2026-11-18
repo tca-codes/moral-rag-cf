@@ -440,3 +440,28 @@ Change: long-run artifacts (judges, adapters, candidates, result files) are now
 pushed to a private Hugging Face dataset repository with `scripts/hub.py`, which
 checks every file's size against what the Hub reports after upload, and stops
 the run on a mismatch. Drive is used only to read the input data.
+
+## 2026-11-18: stale fairness judge from Drive; all candidates re-scored
+
+When the large judges were copied from Drive on 2026-11-18, `judges/large/fairness`
+contained the *first, collapsed* fairness model (accuracy 0.555 = majority),
+while its metrics.json held the retrained model's 0.913. Evidence: every
+fairness candidate sampled that day scored about 0.56 regardless of content
+(new-block mean and best-of-8 mean both ~0.56, vs 0.92 / 0.98 before). Only
+fairness candidates for questions 16,001+ were affected; the other judges'
+rewards were in their usual range. Earlier fairness rewards and all earlier
+tables used the correct judge (their plain/agent fairness scores are not flat).
+
+The re-retrained sanctity judge (dev accuracy 0.892) scores answers lower on
+average than the previous one (~0.81 vs ~0.87 mean candidate reward) at the same
+accuracy, i.e. different calibration. Best-of-8 selection depends only on the
+ranking of a question's 8 candidates, so this matters less, but for consistency:
+
+Fix:
+- `scripts/check_judges.py` now measures each judge's real dev accuracy from its
+  weights and flags BROKEN (no better than the majority guess, or near-constant
+  outputs) or MISMATCH with metrics.json. Run before any judge is used.
+- Fairness large judge retrained (lr 1e-5, 6% warmup, as on 2026-11-17).
+- `scripts/rescore_candidates.py` re-scored every saved candidate (all values,
+  all 28,704 questions) with the final, checked `judges/large`, so all rewards
+  come from one judge set. No candidates were regenerated.
