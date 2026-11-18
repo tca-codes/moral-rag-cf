@@ -351,3 +351,92 @@ Also added 2026-11-17: `train_agents.py --limit-questions` (data-size curve),
 scoring now strips a leading "A:"/"Answer:"/"Reply:" label from every system's
 output before ROUGE (Llama-2-13B copies "A:" from the prompt), and the harmless
 Llama max_length warning is filtered.
+
+## 2026-11-17: Drive data loss and the save-and-verify workflow
+
+After the 8,000-question run, some files written through Colab's Google Drive
+mount had silently disappeared or reverted: the RoBERTa-large sanctity judge's
+weights, all weights in `judges/best` (a full copy of `judges/large`), and the
+second batch of 4,000 reward candidates (each candidate file reverted from
+8,000 to 4,000 questions). Drive was not full (48 GB of 236 GB used). All other
+result files were intact. Cause unknown; that day two Colab sessions had the
+same Drive mounted at once, and the lost files were the large ones and the
+appended ones.
+
+Consequences:
+- The first set of reward-trained agents (`outputs/adapters/agents`) was trained
+  on the first 4,000 questions, not 8,000. It is kept as the 4,000 point of the
+  data-size curve (test answers: `agents_test_7B_rl.jsonl`, "rl4k").
+- `judges/best` was dropped; `judges/large` holds the same five judges.
+- The sanctity judge was retrained with identical settings (roberta-large,
+  lr 2e-5, no warmup, seed 0, all data, 1 epoch). Dev accuracy 0.888, the same
+  as the original to three decimals. Reward candidates for the first 4,000
+  questions were scored with the original sanctity judge, all later ones and
+  every table with the retrained one.
+
+New workflow (from 2026-11-17 15:25): long runs write to the Colab VM's local
+disk (/content/work), copy each finished stage to Drive with rsync, verify the
+copy with `diff -rq` (printing SAVED or PROBLEM), and call
+`drive.flush_and_unmount()` at the end. Only one Colab session uses the Drive
+at a time. Nothing is appended to Drive files during a run.
+
+## 2026-11-18: reward-trained agents, data-size curve (Table 1, judges/large)
+
+All rows: 3,753 test questions, Qwen2.5-7B, scored by the final RoBERTa-large
+judges (`judges/large`). Plain model = same model, no value instruction.
+Reward training: best-of-8 by the value's judge, LoRA rank 16, 2 epochs, lr 1e-4.
+
+P(answer follows value), per value:
+
+| agents | care | fairness | loyalty | authority | sanctity | mean |
+|---|---|---|---|---|---|---|
+| plain model | 90.67 | 88.40 | 91.15 | 80.01 | 81.66 | 86.38 |
+| prompted (no training) | 96.14 | 92.16 | 97.28 | 85.90 | 88.26 | 91.95 |
+| reward-trained, 2,000 questions | 97.15 | 94.78 | 98.31 | 91.02 | 92.69 | 94.79 |
+| reward-trained, 4,000 | 97.53 | 94.84 | 98.40 | 91.04 | 92.98 | 94.96 |
+| reward-trained, 8,000 | 97.63 | 94.99 | 98.45 | 91.15 | 93.11 | 95.07 |
+| reward-trained, all 28,704 | 97.85 | 95.31 | 98.54 | 91.78 | 93.40 | 95.38 |
+| paper PT model | 74.70 | 85.20 | 74.38 | 91.58 | 78.37 | 80.85 |
+| paper Moral Agents (PPO) | 96.74 | 92.40 | 98.20 | 98.83 | 93.05 | 95.84 |
+
+(16,000-question point pending.)
+
+Findings:
+- Reward training adds +2.8 to +3.4 points over prompting (mean 91.95 -> 94.79
+  at 2K, 95.38 at all 28.7K). Largest gains on authority (+5.9) and sanctity
+  (+5.1), the two values where prompting was weakest.
+- Diminishing returns: 2K -> 28.7K questions adds only +0.6. Most of the gain
+  comes from the first 2,000 questions. This justifies the data size used.
+- Our agents' mean (95.38) is close to the paper's PPO agents (95.84). We match
+  or exceed the paper on care, fairness, loyalty and sanctity; authority is
+  7 points lower (91.78 vs 98.83).
+- Distinctness barely changes: own-judge vs other-judge mean 0.919 vs 0.912
+  (prompted), 0.954 vs 0.942 (all). Training raises every judge's score, not
+  only the agent's own value; the judges reward acceptability in general.
+- Caveat: the same judges that gave the reward also score Table 1, which
+  favours the trained agents (the paper does the same). Planned check: rescore
+  with the independently trained DistilRoBERTa judges (`judges/full`).
+
+Final training losses (last 25 steps): 8K 0.58-0.65, all 0.56-0.64 by value.
+The run's last stage (16K test answers) was lost in a Colab disconnect at
+2,112/3,753 and is rerun from the saved 16K adapters.
+
+## 2026-11-18: second Drive loss; results now stored on the Hugging Face Hub
+
+The overnight run printed SAVED (rsync + diff against the Drive mount) for every
+stage, yet after the session disconnected (before `drive.flush_and_unmount()`
+ran) the Drive held only part of it. Kept: 8K agent adapters, their test
+answers, the first 16,000 reward candidates, four large judges. Lost: the
+large sanctity judge (again), candidates 16,001-28,704, the 2K/16K/all agent
+adapters and the 2K/all test answers. The diff only compared against the
+mount's local cache, so it could not see that uploads had not reached Google's
+servers; large files apparently wait to upload and are lost when the session
+ends first.
+
+All numbers from that run were printed in the notebook and are recorded above
+(the log is the evidence for the 2K and all-data rows).
+
+Change: long-run artifacts (judges, adapters, candidates, result files) are now
+pushed to a private Hugging Face dataset repository with `scripts/hub.py`, which
+checks every file's size against what the Hub reports after upload, and stops
+the run on a mismatch. Drive is used only to read the input data.
