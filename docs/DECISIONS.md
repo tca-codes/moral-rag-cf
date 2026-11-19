@@ -593,3 +593,38 @@ The AdamW state is now saved with each checkpoint and restored on resume, so
 training in chunks is identical to one run (tested). The optimizer state is
 kept on the Colab disk only (about 1 GB per moderator); if a session is lost,
 the run resumes from the Hub adapter with a fresh optimizer state.
+
+## 2026-11-19: trained moderators (CMVA-GS), without and with RAG
+
+Both trained 2 epochs (11,377 steps; LoRA rank 128) on all 91,014 training rows.
+Both sessions disconnected once (Colab); training resumed from the last Hub
+checkpoint (plain at step 5,689, RAG at 8,689) with a fresh AdamW state.
+
+Epoch choice on validation (ROUGE-L vs human reply, 9,782 rows):
+
+| moderator | epoch 1 | epoch 2 |
+|---|---|---|
+| without RAG | **0.2255** | 0.2250 |
+| with RAG | **0.2307** | 0.2269 |
+
+Epoch 1 is used for both on the test set (epoch 2 slightly overfits).
+
+Test set, ROUGE-L (9,652 rows shared by every system):
+
+| system | vs human reply | vs chatbot reply |
+|---|---|---|
+| best single advisor | 0.1151 | 0.1374 |
+| prompt-only moderator | 0.1196 | 0.1414 |
+| prompt-only moderator + RAG | 0.1248 | 0.1452 |
+| Llama-3.1-8B 5-shot (best baseline) | 0.1652 | 0.2026 |
+| trained moderator (CMVA-GS) | 0.2240 | 0.2460 |
+| **trained moderator + RAG** | **0.2258** | **0.2517** |
+
+Training nearly doubles ROUGE-L and beats every baseline. RAG adds a small gain
+on top of training, on both val (+0.0052) and test (+0.0018 human, +0.0057
+chatbot). Significance: paired bootstrap over questions (`mvrag.stats`,
+`eval_aggregator.py --compare`), pending.
+
+Added `scripts/score_moderators.py` (Table 2): the value judges score each
+reply; on-profile = mean over the user's values, off-profile = the rest, gap =
+how selectively the reply serves the user's values.

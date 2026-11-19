@@ -24,6 +24,7 @@ from pathlib import Path
 from mvrag.aggregator import profile_from_morals, profile_key
 from mvrag.data import PAPER_VALUES, load_split
 from mvrag.jobs import read_outputs
+from mvrag.stats import paired_bootstrap
 
 METRICS = ("rouge1", "rouge2", "rougeL", "rougeLsum")
 LABEL_PREFIX = re.compile(r"^\s*(?:A|Answer|Reply|Final reply)\s*:\s*", re.IGNORECASE)
@@ -52,6 +53,9 @@ def main() -> None:
     parser.add_argument("--out", default="outputs/rouge_aggregator_prompt.json")
     parser.add_argument("--extra", nargs="*", default=[], metavar="NAME=FILE",
                         help="more aggregator output files to score on the same rows, e.g. trained=outputs/aggregator_test_trained.jsonl")
+    parser.add_argument("--compare", nargs="*", default=[], metavar="A:B",
+                        help="significance of B minus A on ROUGE-L (paired bootstrap over questions), e.g. trained:trained_rag")
+    parser.add_argument("--resamples", type=int, default=10_000)
     args = parser.parse_args()
 
     agg, agents = read_outputs(args.aggregator), read_by_uid(args.agents)
@@ -62,6 +66,8 @@ def main() -> None:
     refs = {"worker_answer": "human-written reply (worker_answer)", "answer": "chatbot reply (A)"}
     sums = {r: {s: {m: 0.0 for m in METRICS} for s in systems} for r in refs}
     counts = {r: 0 for r in refs}
+    per_row = {r: {s: [] for s in systems} for r in refs}  # ROUGE-L per row, for --compare
+    row_uids = {r: [] for r in refs}
 
     for ex in load_split(args.split, args.data_dir):
         profile = profile_from_morals(ex.morals)
@@ -84,10 +90,12 @@ def main() -> None:
             if not reference:
                 continue
             counts[ref_name] += 1
+            row_uids[ref_name].append(ex.uid)
             for system, text in outputs.items():
                 scores = scorer.score(reference, clean_output(text))
                 for m in METRICS:
                     sums[ref_name][system][m] += scores[m].fmeasure
+                per_row[ref_name][system].append(scores["rougeL"].fmeasure)
 
     results = {}
     for ref_name, label in refs.items():
@@ -101,6 +109,15 @@ def main() -> None:
         print(f"{'system':<{width}}" + "".join(f"{m:>11}" for m in METRICS))
         for s in systems:
             print(f"{s:<{width}}" + "".join(f"{results[ref_name][s][m]:>11.4f}" for m in METRICS))
+        for pair in args.compare:
+            a, b = pair.split(":", 1)
+            if a not in systems or b not in systems:
+                raise SystemExit(f"--compare {pair}: both names must be among {systems}")
+            t = paired_bootstrap(per_row[ref_name][a], per_row[ref_name][b], row_uids[ref_name],
+                                 n_resamples=args.resamples)
+            results[ref_name].setdefault("compare", {})[pair] = t
+            print(f"  {b} - {a}: ROUGE-L {t['diff']:+.4f}  95% CI [{t['ci95'][0]:+.4f}, {t['ci95'][1]:+.4f}]  "
+                  f"p = {t['p']:.4f}  ({t['groups']} questions resampled)")
 
     if not results:
         raise SystemExit("Nothing scored; check the input files.")
