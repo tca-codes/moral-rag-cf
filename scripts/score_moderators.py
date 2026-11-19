@@ -69,6 +69,10 @@ def main() -> None:
                         help="output files from run_aggregator.py / run_baseline.py (keyed by question + profile)")
     parser.add_argument("--plain", default=None, help="plain-model answers (same reply for every profile)")
     parser.add_argument("--agents", default=None, help="advisor answers; adds best_agent (advisor of the first profile value)")
+    parser.add_argument("--references", action="store_true",
+                        help="also score MIC's human-written reply and chatbot reply for each input (reference levels)")
+    parser.add_argument("--split", default="test", choices=["train", "val", "test"])
+    parser.add_argument("--data-dir", default="data/MIC")
     parser.add_argument("--judges-dir", default="judges/large")
     parser.add_argument("--compare", nargs="*", default=[], metavar="A:B", help="significance of B minus A (on-profile)")
     parser.add_argument("--out", default="outputs/table2.json")
@@ -81,10 +85,23 @@ def main() -> None:
     agents = read_by_uid(args.agents) if args.agents else None
     keys = [k for k in keys if (plain is None or k.split("|")[0] in plain)
             and (agents is None or k.split("|")[0] in agents)]
+    refs = {}
+    if args.references:
+        from mvrag.aggregator import profile_from_morals, profile_key
+        from mvrag.data import load_split
+
+        for ex in sorted(load_split(args.split, args.data_dir), key=lambda e: (e.uid, e.row)):
+            k = profile_key(ex.uid, profile_from_morals(ex.morals))
+            if k not in refs and ex.worker_answer and ex.answer:
+                refs[k] = (ex.worker_answer, ex.answer)  # first row of this input
+        keys = [k for k in keys if k in refs]
     if not keys:
         raise SystemExit("The files share no inputs.")
 
     texts: dict[str, list[str]] = {}
+    if refs:
+        texts["human_reply"] = [refs[k][0] for k in keys]
+        texts["chatbot_reply"] = [refs[k][1] for k in keys]
     if plain is not None:
         texts["plain"] = [plain[k.split("|")[0]]["answers"]["plain"] for k in keys]
     if agents is not None:

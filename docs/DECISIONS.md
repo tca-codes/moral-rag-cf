@@ -628,3 +628,39 @@ chatbot). Significance: paired bootstrap over questions (`mvrag.stats`,
 Added `scripts/score_moderators.py` (Table 2): the value judges score each
 reply; on-profile = mean over the user's values, off-profile = the rest, gap =
 how selectively the reply serves the user's values.
+
+## 2026-11-19: final Figure 2 and Table 2 (test set)
+
+ROUGE-L, 9,652 rows shared by all systems; significance by paired bootstrap
+over 3,709 questions (10,000 resamples):
+
+| comparison | vs human reply | vs chatbot reply |
+|---|---|---|
+| trained + RAG minus trained | +0.0018, 95% CI [-0.0005, +0.0040], p = 0.13 | +0.0057, [+0.0028, +0.0087], p < 0.001 |
+| prompt-only + RAG minus prompt-only | +0.0052, [+0.0044, +0.0060], p < 0.001 | +0.0038, [+0.0029, +0.0047], p < 0.001 |
+| trained minus prompt-only | +0.1044, [+0.1009, +0.1078], p < 0.001 | +0.1046, [+0.0997, +0.1097], p < 0.001 |
+
+RAG reliably helps the untrained moderator. After training, its gain against
+the human reply is not significant; against the chatbot reply it is.
+
+Table 2, judge alignment with the user's profile (7,796 inputs, judges/large, %):
+
+| system | on-profile | off-profile | gap |
+|---|---|---|---|
+| plain model | 87.95 | 85.99 | +1.96 |
+| best single advisor | 95.63 | 94.18 | +1.45 |
+| prompt-only moderator | 95.02 | 93.48 | +1.54 |
+| prompt-only + RAG | 94.47 | 93.02 | +1.45 |
+| Agg13Llama | 93.90 | 91.99 | +1.91 |
+| Llama-3.1-8B 5-shot | 86.08 | 84.21 | +1.87 |
+| trained moderator | 81.47 | 79.16 | +2.31 |
+| trained + RAG | 80.58 | 78.68 | +1.90 |
+
+Trade-off: training moves replies toward the human style (ROUGE nearly doubles)
+and away from the advisors' explicit moralizing, so the judges rate them lower
+(-13.6 points vs prompt-only). RAG, which adds human replies to the input, lowers
+judge alignment slightly (-0.9, p < 0.001 trained; -0.6 prompt-only). Every
+system serves the user's values only slightly more than other values (gap
+1.3-2.3 points); the trained moderator has the largest gap.
+Next: score the human and chatbot replies themselves (`--references`) to see
+whether ~80% is simply the level of human replies.
