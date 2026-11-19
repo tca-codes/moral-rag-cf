@@ -33,12 +33,14 @@ def main() -> None:
     parser.add_argument("--grad-accum", type=int, default=2)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--rank", type=int, default=64)
-    parser.add_argument("--max-len", type=int, default=640)
+    parser.add_argument("--max-len", type=int, default=1024)
     parser.add_argument("--save-every", type=int, default=500)
     parser.add_argument("--max-steps", type=int, default=None, help="stop after this many steps (timing trial)")
     parser.add_argument("--limit-examples", type=int, default=None)
     parser.add_argument("--no-4bit", action="store_true", help="train on the uncompressed model (needs more memory)")
     parser.add_argument("--grad-checkpointing", action="store_true", help="slower, but uses less GPU memory")
+    parser.add_argument("--full-logits", action="store_true",
+                        help="compute logits for every position (default: only the target reply, which saves memory)")
     parser.add_argument("--retrieved", default=None,
                         help="retrieved examples for the training split (RAG variant); omit for plain CMVA-GS")
     args = parser.parse_args()
@@ -64,7 +66,10 @@ def main() -> None:
     model.print_trainable_parameters()
     state = train(model, tokenizer, examples, args.out_dir, epochs=args.epochs, batch_size=args.batch_size,
                   grad_accum=args.grad_accum, lr=args.lr, max_len=args.max_len,
-                  save_every=args.save_every, max_steps=args.max_steps)
+                  save_every=args.save_every, max_steps=args.max_steps,
+                  target_logits_only=not args.full_logits)
+    if state.get("skipped_too_long"):
+        print(f"Note: {state['skipped_too_long']} examples were longer than --max-len {args.max_len} and skipped")
     print(f"Saved adapter to {args.out_dir}: {state}")
 
 

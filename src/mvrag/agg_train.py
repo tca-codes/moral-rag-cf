@@ -57,8 +57,8 @@ def encode_example(tokenizer, messages: list[dict], target: str, max_len: int):
     return prompt_ids + target_ids, [-100] * len(prompt_ids) + target_ids
 
 
-def collate(encoded: list, pad_id: int):
-    """Right-pad a list of (input_ids, labels) into tensors."""
+def collate(encoded: list, pad_id: int, left: bool = False):
+    """Pad a list of (input_ids, labels) into tensors (right-padded unless left=True)."""
     import torch
 
     width = max(len(ids) for ids, _ in encoded)
@@ -66,10 +66,32 @@ def collate(encoded: list, pad_id: int):
     labels = torch.full((len(encoded), width), -100, dtype=torch.long)
     mask = torch.zeros((len(encoded), width), dtype=torch.long)
     for i, (ids, lab) in enumerate(encoded):
-        input_ids[i, : len(ids)] = torch.tensor(ids)
-        labels[i, : len(lab)] = torch.tensor(lab)
-        mask[i, : len(ids)] = 1
+        sl = slice(width - len(ids), width) if left else slice(0, len(ids))
+        input_ids[i, sl] = torch.tensor(ids)
+        labels[i, sl] = torch.tensor(lab)
+        mask[i, sl] = 1
     return input_ids, mask, labels
+
+
+def target_only_loss(model, input_ids, mask, labels):
+    """Causal-LM loss computed from the logits of the target positions only.
+
+    Expects LEFT-padded inputs, so every example's target reply sits at the end.
+    Only the last (longest target + 1) positions are projected onto the
+    vocabulary, instead of the whole prompt. With a 150K-word vocabulary and
+    prompts of several hundred tokens this saves most of the memory spent on
+    logits; the loss value is the same as the standard one (mean token
+    cross-entropy over the target tokens).
+    """
+    import torch
+
+    keep = int((labels != -100).sum(dim=1).max().item()) + 1
+    position_ids = (mask.cumsum(dim=1) - 1).clamp(min=0)
+    logits = model(input_ids=input_ids, attention_mask=mask, position_ids=position_ids,
+                   logits_to_keep=keep).logits
+    pred = logits[:, :-1, :].float()
+    gold = labels[:, -(keep - 1):]
+    return torch.nn.functional.cross_entropy(pred.reshape(-1, pred.size(-1)), gold.reshape(-1), ignore_index=-100)
 
 
 def lr_at(step: int, total_steps: int, base_lr: float, warmup_frac: float = 0.03) -> float:
@@ -163,11 +185,14 @@ def train(
     save_every: int = 500,
     log_every: int = 25,
     max_steps: int | None = None,
+    target_logits_only: bool = False,
 ) -> dict:
     """Train the LoRA adapter; returns the final state dict.
 
     A "step" is one optimizer update = batch_size * grad_accum examples.
     `max_steps` stops early (for a timing trial) without changing the schedule.
+    `target_logits_only` computes logits only for the target reply (much less
+    memory for long prompts; same loss).
     """
     import torch
 
@@ -207,9 +232,13 @@ def train(
                     encoded.append(enc)
             if not encoded:
                 continue
-            input_ids, mask, labels = (t.to(device) for t in collate(encoded, tokenizer.pad_token_id))
+            input_ids, mask, labels = (t.to(device) for t in
+                                       collate(encoded, tokenizer.pad_token_id, left=target_logits_only))
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=cuda):
-                loss = model(input_ids=input_ids, attention_mask=mask, labels=labels).loss / grad_accum
+                if target_logits_only:
+                    loss = target_only_loss(model, input_ids, mask, labels) / grad_accum
+                else:
+                    loss = model(input_ids=input_ids, attention_mask=mask, labels=labels).loss / grad_accum
             scaler.scale(loss).backward()
             step_loss += loss.item()
         scaler.unscale_(optimizer)

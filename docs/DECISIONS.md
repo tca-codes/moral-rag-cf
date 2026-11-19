@@ -465,3 +465,113 @@ Fix:
 - `scripts/rescore_candidates.py` re-scored every saved candidate (all values,
   all 28,704 questions) with the final, checked `judges/large`, so all rewards
   come from one judge set. No candidates were regenerated.
+
+## 2026-11-19: FINAL Table 1 and data-size curve (supersedes earlier Table 1s)
+
+All candidates re-scored with the checked final judges (`judges/large`;
+fairness retrained 2026-11-18, dev acc 0.914 on the check sample). Re-scoring
+changed fairness rewards from 0.816/0.860 to 0.916/0.977 (all/best-of-8) and
+sanctity from 0.848/0.966 to 0.818/0.955; other values unchanged. Every agent
+set below was trained on these rewards (except rl4k and rl8k, trained 2026-11-17
+on rewards from the earlier judge versions) and every row is scored on the same
+3,753 test questions by the same judges. All artifacts are on the Hugging Face
+Hub (private repo moral-rag-cf-artifacts).
+
+Final judges (RoBERTa-large, also the reward models), P(answer follows value) %:
+
+| agents | care | fairness | loyalty | authority | sanctity | mean |
+|---|---|---|---|---|---|---|
+| plain model | 90.67 | 88.40 | 91.15 | 80.01 | 82.52 | 86.55 |
+| prompted | 96.14 | 92.16 | 97.28 | 85.90 | 82.99 | 90.89 |
+| reward-trained 2K | 97.21 | 94.75 | 98.32 | 91.22 | 88.43 | 93.99 |
+| reward-trained 4K | 97.53 | 94.84 | 98.40 | 91.04 | 88.57 | 94.08 |
+| reward-trained 8K | 97.63 | 94.99 | 98.45 | 91.15 | 88.56 | 94.16 |
+| reward-trained 16K | 97.79 | 95.29 | 98.48 | 91.43 | 89.83 | 94.56 |
+| reward-trained all 28.7K | 97.84 | 95.28 | 98.56 | 91.41 | 90.22 | 94.66 |
+| paper PT model | 74.70 | 85.20 | 74.38 | 91.58 | 78.37 | 80.85 |
+| paper Moral Agents (PPO) | 96.74 | 92.40 | 98.20 | 98.83 | 93.05 | 95.84 |
+
+Independent judges (DistilRoBERTa, never used as a reward):
+
+| agents | care | fairness | loyalty | authority | sanctity | mean |
+|---|---|---|---|---|---|---|
+| plain model | 92.64 | 82.06 | 83.34 | 78.51 | 81.50 | 83.61 |
+| prompted | 97.20 | 87.01 | 89.59 | 87.17 | 88.79 | 89.95 |
+| reward-trained 2K | 97.80 | 90.73 | 92.29 | 91.85 | 93.13 | 93.16 |
+| reward-trained 4K | 97.94 | 90.94 | 92.37 | 91.85 | 93.58 | 93.34 |
+| reward-trained 8K | 98.03 | 91.21 | 92.34 | 91.78 | 93.56 | 93.38 |
+| reward-trained 16K | 98.07 | 91.50 | 92.54 | 91.82 | 93.91 | 93.57 |
+| reward-trained all 28.7K | 98.16 | 91.36 | 92.88 | 91.92 | 94.03 | 93.67 |
+
+Own-judge vs other-judge mean (final judges): prompted 0.909/0.907,
+2K 0.940/0.934, all 0.947/0.940 (gap +0.002 -> +0.007).
+
+Findings:
+1. Reward training works and is not an artifact of grading with the reward
+   model: the independent judges show the same pattern (prompted 89.95 ->
+   all 93.67, vs 90.89 -> 94.66 with the reward judges).
+2. Diminishing returns: 2K -> 28.7K questions adds +0.67 (reward judges) and
+   +0.51 (independent). Most of the gain comes from the first 2,000 questions.
+3. Versus the paper (mean 94.66 vs 95.84): we match or exceed the paper on care,
+   fairness and loyalty; authority (91.41 vs 98.83) and sanctity (90.22 vs 93.05)
+   are lower. Note the paper's PT model starts at 91.58 on authority, ours at 80.01.
+4. The agents become slightly more distinct with training (gap 0.002 -> 0.007)
+   but remain far from separable: each agent scores high on every value.
+5. Judge calibration matters: the re-retrained sanctity judge (same accuracy)
+   scores the prompted agent at 82.99 vs 88.26 with the previous sanctity judge.
+   Only numbers from one judge set are compared.
+
+Best agents for the next stage: reward-trained on all 28,704 questions
+(`outputs/adapters/agents_all`).
+
+## 2026-11-19: moderator (aggregator) stage, preparation
+
+Done on an A100 40GB, all saved to the Hub:
+- Best agents (reward-trained, all 28.7K) answered all validation (3,761) and
+  training (28,704) questions: `agents_val_7B_rlall.jsonl`, `agents_train_7B_rlall.jsonl`.
+  Speed 0.36 s/question (5 answers) at 64 questions per batch.
+- Retrieval (all-MiniLM-L6-v2, k=3, pool = 28,704 training questions) for
+  test (9,144 inputs), val (9,167) and train (71,832 distinct question+profile).
+- Prompt-only (untrained) Qwen moderator on the test set with the trained
+  agents, without RAG (954 s) and with RAG (1,102 s).
+
+Training trials (rank 128, batch 8 x 2, no gradient checkpointing) ran out of
+memory on the A100 40GB for both variants: the moderator's prompts (five agent
+answers, plus three retrieved examples for RAG) are several times longer than
+the agents'. Changes:
+- The loss is now computed from the logits of the target reply only
+  (`target_only_loss`, left padding + `logits_to_keep`). Verified identical to
+  the standard loss and gradients (loss diff 5e-7, gradient diff 2e-8).
+- `--max-len` raised from 640 to 1024 tokens, so RAG prompts are not dropped;
+  the script reports how many examples were too long.
+- Gradient checkpointing on the A100 40GB.
+
+## 2026-11-19: Figure 2 so far (untrained moderators and baselines)
+
+ROUGE-L F1 on the 9,652 MIC test rows that every system answered (systems
+compared on exactly the same rows). Agents = reward-trained on all 28.7K.
+
+| system | vs human reply (worker_answer) | vs chatbot reply (A) |
+|---|---|---|
+| plain Qwen2.5-7B (PT model) | 0.1231 | 0.1557 |
+| best single agent | 0.1151 | 0.1374 |
+| Qwen moderator, prompt only | 0.1196 | 0.1414 |
+| Qwen moderator, prompt only + RAG | **0.1248** | 0.1452 |
+| Agg13Llama (Llama-2-13B aggregates the agents) | 0.1144 | 0.1481 |
+| Llama-2-7B-chat, 5-shot | 0.1109 | 0.1455 |
+| Llama-2-13B-chat, 5-shot | 0.1257 | 0.1661 |
+| Llama-3.1-8B-Instruct, 5-shot | 0.1652 | 0.2026 |
+
+Findings:
+1. RAG helps the untrained moderator: +0.0052 ROUGE-L (+4.3% relative) against
+   the human reply, enough to pass the plain model.
+2. Same ordering as the paper among aggregators: our moderator > Agg13Llama.
+3. The few-shot baselines win so far because their 5 MIC examples show the
+   short MIC reply style; ROUGE rewards style. The trained moderator (CMVA-GS)
+   learns that style from the training targets, which is the paper's point.
+4. With the reward-trained agents the prompt-only moderator scores lower than
+   with the instructed agents (0.1196 vs 0.1246): the trained agents moralize
+   more, which moves the blended reply away from the human reply.
+
+To verify before the report: Agg13Llama covered 7,796 test inputs (vs 9,144 for
+the Qwen moderators), which is why 9,652 of 11,376 rows are scored.
