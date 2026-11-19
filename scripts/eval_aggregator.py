@@ -45,7 +45,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--aggregator", default="outputs/aggregator_test_prompt.jsonl")
     parser.add_argument("--agents", default="outputs/agents_test_7B_full.jsonl")
-    parser.add_argument("--plain", default="outputs/plain_test_7B_full.jsonl")
+    parser.add_argument("--plain", default="outputs/plain_test_7B_full.jsonl",
+                        help="plain-model answers; pass \"\" to leave the plain model out (e.g. on val)")
     parser.add_argument("--split", default="test", choices=["train", "val", "test"])
     parser.add_argument("--data-dir", default="data/MIC")
     parser.add_argument("--out", default="outputs/rouge_aggregator_prompt.json")
@@ -53,10 +54,11 @@ def main() -> None:
                         help="more aggregator output files to score on the same rows, e.g. trained=outputs/aggregator_test_trained.jsonl")
     args = parser.parse_args()
 
-    agg, agents, plain = read_outputs(args.aggregator), read_by_uid(args.agents), read_by_uid(args.plain)
+    agg, agents = read_outputs(args.aggregator), read_by_uid(args.agents)
+    plain = read_by_uid(args.plain) if args.plain else None
     scorer = rouge_scorer.RougeScorer(list(METRICS), use_stemmer=True)
     extra = {name: read_outputs(path) for name, path in (item.split("=", 1) for item in args.extra)}
-    systems = ("plain", "best_agent", "aggregator", *extra)
+    systems = (("plain",) if plain is not None else ()) + ("best_agent", "aggregator", *extra)
     refs = {"worker_answer": "human-written reply (worker_answer)", "answer": "chatbot reply (A)"}
     sums = {r: {s: {m: 0.0 for m in METRICS} for s in systems} for r in refs}
     counts = {r: 0 for r in refs}
@@ -64,7 +66,7 @@ def main() -> None:
     for ex in load_split(args.split, args.data_dir):
         profile = profile_from_morals(ex.morals)
         key = profile_key(ex.uid, profile)
-        if key not in agg or ex.uid not in agents or ex.uid not in plain:
+        if key not in agg or ex.uid not in agents or (plain is not None and ex.uid not in plain):
             continue
         if any(key not in outputs_ for outputs_ in extra.values()):
             continue  # keep every system on exactly the same rows
@@ -72,7 +74,7 @@ def main() -> None:
         if own is None:
             continue  # no profile among the five values (e.g. liberty-only rows)
         outputs = {
-            "plain": plain[ex.uid]["answers"]["plain"],
+            **({"plain": plain[ex.uid]["answers"]["plain"]} if plain is not None else {}),
             "best_agent": agents[ex.uid]["answers"][own],
             "aggregator": agg[key]["output"],
             **{name: outputs_[key]["output"] for name, outputs_ in extra.items()},
