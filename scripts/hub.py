@@ -23,6 +23,8 @@ import sys
 from pathlib import Path
 
 REPO_TYPE = "dataset"
+# One SAVED/OK line per path is enough; the per-chunk progress bars flood notebook output.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 
 def local_files(root: Path, rel: str) -> dict[str, int]:
