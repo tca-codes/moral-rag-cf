@@ -165,9 +165,35 @@ def load_for_training(model_name: str, out_dir: str | Path, four_bit: bool = Tru
     return model, tokenizer
 
 
-def _save(model, out_dir: Path, state: dict) -> None:
+OPTIMIZER_FILE = "optimizer.pt"
+
+
+def save_optimizer(optimizer, out_dir: str | Path) -> None:
+    """Save AdamW's running averages, so a resumed run continues exactly where it stopped."""
+    import torch
+
+    tmp = Path(out_dir) / (OPTIMIZER_FILE + ".tmp")
+    torch.save(optimizer.state_dict(), tmp)
+    tmp.replace(Path(out_dir) / OPTIMIZER_FILE)
+
+
+def restore_optimizer(optimizer, out_dir: str | Path) -> bool:
+    """Load the optimizer state saved by `save_optimizer`; False if there is none."""
+    import torch
+
+    path = Path(out_dir) / OPTIMIZER_FILE
+    if not path.exists():
+        return False
+    device = optimizer.param_groups[0]["params"][0].device
+    optimizer.load_state_dict(torch.load(path, map_location=device, weights_only=True))
+    return True
+
+
+def _save(model, out_dir: Path, state: dict, optimizer=None) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(out_dir))
+    if optimizer is not None:
+        save_optimizer(optimizer, out_dir)
     (out_dir / "train_state.json").write_text(json.dumps(state, indent=2))
 
 
@@ -213,6 +239,11 @@ def train(
 
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=0.0)
+    if start_step > 0:
+        if restore_optimizer(optimizer, out_dir):
+            print("Resumed the optimizer state")
+        else:
+            print("Note: no saved optimizer state; the optimizer restarts (older checkpoint)")
     model.train()
     skipped, losses, t0 = 0, [], time.time()
 
@@ -258,5 +289,5 @@ def train(
         if done % save_every == 0 or done == stop_step:
             state = {"step": done, "total_steps": total_steps, "examples": len(examples),
                      "skipped_too_long": skipped, "last_loss": losses[-1]}
-            _save(model, out_dir, state)
+            _save(model, out_dir, state, optimizer)
     return state

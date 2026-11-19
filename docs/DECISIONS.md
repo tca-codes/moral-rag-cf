@@ -575,3 +575,21 @@ Findings:
 
 To verify before the report: Agg13Llama covered 7,796 test inputs (vs 9,144 for
 the Qwen moderators), which is why 9,652 of 11,376 rows are scored.
+
+## 2026-11-19: moderator training setup
+
+Trials (30 steps, rank 128, batch 8 x 2, A100 40GB, gradient checkpointing,
+target-only loss): all 91,014 training rows usable (none too long).
+- Without RAG: 1.97 s/step, peak 17.6 GB, 3.1 h per epoch.
+- With RAG: 2.56 s/step, peak 18.2 GB, 4.0 h per epoch.
+- Without gradient checkpointing the RAG variant runs out of memory on 40 GB.
+
+Plan: 2 epochs (11,378 steps) per moderator, the two trained in parallel in
+two Colab sessions. Training runs in chunks of 1,000 steps; after each chunk
+the adapter is pushed to the Hub, and the epoch-1 adapter is kept separately
+so the validation set can decide whether the second epoch helps.
+
+The AdamW state is now saved with each checkpoint and restored on resume, so
+training in chunks is identical to one run (tested). The optimizer state is
+kept on the Colab disk only (about 1 GB per moderator); if a session is lost,
+the run resumes from the Hub adapter with a fresh optimizer state.
