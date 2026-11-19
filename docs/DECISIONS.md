@@ -664,3 +664,19 @@ system serves the user's values only slightly more than other values (gap
 1.3-2.3 points); the trained moderator has the largest gap.
 Next: score the human and chatbot replies themselves (`--references`) to see
 whether ~80% is simply the level of human replies.
+
+## 2026-11-19: RAG v2, retrieving the rule of thumb (follow-up experiment)
+
+Motivation: the retrieved examples show only a similar question and a human
+reply, which is mostly style; training already teaches the style, so RAG adds
+little after training (+0.0018 ROUGE-L, not significant) and slightly lowers
+judge alignment. RAG v2 adds each retrieved example's MIC rule of thumb and its
+moral foundations ("Rule of thumb: ... (care, fairness)").
+
+Controlled comparison: the retrieved examples are identical to RAG v1 (same
+questions, replies, order; `scripts/add_rots.py` only adds the rule), and the
+moderator is trained with the same seed, data order and learning-rate schedule
+as the chosen RAG v1 model (2-epoch schedule stopped at the end of epoch 1,
+step 5,689). The only difference is the rule of thumb in the input. The
+decision is made on validation; the test set is run once and reported whatever
+the outcome. RAG v1 remains the main result.

@@ -59,7 +59,8 @@ def build_aggregator_messages(
 
     answers:   {value: agent answer}; values may be missing (leave-one-out).
     profile:   five 0/1 numbers in PAPER_VALUES order.
-    retrieved: optional list of {"question": ..., "answer": ...} examples (RAG).
+    retrieved: optional list of {"question": ..., "answer": ...} examples (RAG);
+               with "rot" (and "rot_morals") the example's rule of thumb is shown too (RAG v2).
     """
     lines = [f"Question: {question}", "", f"Moral profile: {profile_text(profile)}", "", "Candidate replies:"]
     shown = [v for v in PAPER_VALUES if answers.get(v)]
@@ -70,7 +71,11 @@ def build_aggregator_messages(
     if retrieved:
         lines += ["", "Similar past questions and the replies given:"]
         for i, ex in enumerate(retrieved, 1):
-            lines.append(f"({i}) Q: {ex['question']} A: {ex['answer']}")
+            line = f"({i}) Q: {ex['question']} A: {ex['answer']}"
+            if ex.get("rot"):  # RAG v2: the moral rule the reply follows
+                values = [m for m in ex.get("rot_morals", []) if m in PAPER_VALUES]
+                line += f" Rule of thumb: {ex['rot']}" + (f" ({', '.join(values)})" if values else "")
+            lines.append(line)
     lines += ["", "Final reply:"]
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
