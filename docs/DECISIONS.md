@@ -680,3 +680,23 @@ as the chosen RAG v1 model (2-epoch schedule stopped at the end of epoch 1,
 step 5,689). The only difference is the rule of thumb in the input. The
 decision is made on validation; the test set is run once and reported whatever
 the outcome. RAG v1 remains the main result.
+
+## 2026-11-19: reference levels for Table 2, and RAG v2 results
+
+Judge alignment of MIC's own replies on the same 7,796 test inputs (%):
+human reply 78.79 on-profile (gap +1.57), chatbot reply 76.86 (+2.32).
+The trained moderators (80.6-81.5) are slightly above the human level; the
+judges simply rate explicit, moralizing text higher than human-style replies.
+
+RAG v2 (retrieved examples + their rule of thumb), same examples and training
+schedule as RAG v1 (epoch-1 model), all 91,014 rows usable:
+
+| comparison | val ROUGE-L (human) | test ROUGE-L (human) | test ROUGE-L (chatbot) | test on-profile |
+|---|---|---|---|---|
+| RAG v2 minus RAG v1 | -0.0007, p = 0.45 | +0.0002, p = 0.80 | -0.0003, p = 0.76 | -0.18 points, p = 0.37 |
+| RAG v2 minus no RAG | | +0.0020, p = 0.08 | +0.0054, p = 0.001 | -1.06 points, p < 0.001 |
+
+Null result: adding the rule of thumb changes nothing measurable. Reading: the
+trained moderator takes style, not moral content, from its retrieved
+examples; the counterfactual analysis tests this directly (influence of the
+retrieved examples, judge flips when they are removed or swapped).
