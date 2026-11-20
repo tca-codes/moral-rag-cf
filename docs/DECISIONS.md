@@ -700,3 +700,33 @@ Null result: adding the rule of thumb changes nothing measurable. Reading: the
 trained moderator takes style, not moral content, from its retrieved
 examples; the counterfactual analysis tests this directly (influence of the
 retrieved examples, judge flips when they are removed or swapped).
+
+## 2026-11-19: counterfactual explanations (G15)
+
+1,000 random test inputs (seed 0), 13 variants each: drop one advisor (5), drop
+one retrieved example (3), swap one retrieved example for a mismatched one (3),
+no retrieval (1), plus the full input. Greedy decoding. Influence = 1 - ROUGE-L
+(variant reply, full reply); flip = a profile-value judge's yes/no changes.
+
+| variant | trained RAG moderator: changed / influence / flips | prompt-only RAG moderator: changed / influence / flips |
+|---|---|---|
+| drop one advisor, value in profile | 0.26 / 0.096 / 0.04 | 0.88 / 0.542 / 0.06 |
+| drop one advisor, value not in profile | 0.25 / 0.090 / 0.02 | 0.51 / 0.197 / 0.02 |
+| drop one retrieved example | 0.32 / 0.124 / 0.04 | 0.46 / 0.171 / 0.01 |
+| swap one retrieved example | 0.34 / 0.145 / 0.05 | 0.45 / 0.160 / 0.01 |
+| no retrieval at all | 0.58 / 0.266 / 0.09 | 0.55 / 0.237 / 0.02 |
+
+Findings:
+1. The untrained moderator does what the prompt asks: removing the advisor whose
+   value is in the user's profile changes the reply far more (influence 0.54)
+   than removing another advisor (0.20). Care's advisor matters most (0.46).
+2. Training removes this: the trained moderator treats profile and non-profile
+   advisors the same (0.096 vs 0.090). Profile-selective blending, the core of
+   CMVA, largely disappears after supervised training on human replies, which
+   matches the small on/off-profile gap in Table 2.
+3. Training shifts reliance to retrieval: for the trained moderator one retrieved
+   example matters more than one advisor (0.124 vs 0.092), and removing retrieval
+   changes 58% of replies. Retrieved examples act as style guides; with RAG v2's
+   null result, the moderator takes style, not moral content, from them.
+4. Moral verdicts are stable: judge flips stay at 1-9%; removing all retrieval
+   flips most (9%, trained). Quality and alignment changes are below 0.005.
